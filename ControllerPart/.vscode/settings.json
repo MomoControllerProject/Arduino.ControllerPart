@@ -1,0 +1,8 @@
+{
+    "C_Cpp.intelliSenseEngine": "Tag Parser",
+    "editor.insertSpaces": true,
+    "files.autoGuessEncoding": true,
+    "arduino.logLevel": "info",
+    "explorer.confirmDelete": false,
+    "editor.detectIndentation": false,
+}
