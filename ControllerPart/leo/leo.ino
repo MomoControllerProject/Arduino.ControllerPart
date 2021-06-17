@@ -38,7 +38,7 @@ void doEncoder0();
 
 #define ReportDelay 1000
 #define GEAR 60     //number of gear teeth or ppr of encoder
-#define TTdz 0     //digital tt deadzone (pulse)
+#define TTdz 0      //digital tt deadzone (pulse)
 #define TTdelay 100 //digital tt button release delay (millisecond)
 byte EncPins[] = {0, 1};
 byte SinglePins[] = {2, 3, 4, 5, 6, 7, 8, 9, 10};
@@ -148,11 +148,56 @@ void buttonsKeyboardLoop()
 }
 #pragma endregion
 
-void setup()
+void waitDone()
 {
-    Serial.begin(9600);
-    Serial.println("Begin searial print output.");
+    while (digitalRead(ButtonPins[0]) == LOW | digitalRead(ButtonPins[1]) == LOW)
+    {
+        if ((millis() % 1000) < 500)
+        {
+            for (int i = 0; i < SingleCount; i++)
+            {
+                digitalWrite(SinglePins[i], HIGH);
+            }
+        }
+        else if ((millis() % 1000) > 500)
+        {
+            Serial.println("wait for key release.....");
+            for (int i = 0; i < SingleCount; i++)
+            {
+                digitalWrite(SinglePins[i], LOW);
+            }
+        }
+    }
+}
 
+void bootLight()
+{
+    for (int i = 0; i < ButtonCount; i++)
+    {
+        digitalWrite(SinglePins[i], HIGH);
+        delay(80);
+        digitalWrite(SinglePins[i], LOW);
+    }
+    for (int i = ButtonCount - 2; i >= 0; i--)
+    {
+        digitalWrite(SinglePins[i], HIGH);
+        delay(80);
+        digitalWrite(SinglePins[i], LOW);
+    }
+    for (int i = 0; i < ButtonCount; i++)
+    {
+        digitalWrite(SinglePins[i], HIGH);
+    }
+    delay(500);
+    for (int i = 0; i < ButtonCount; i++)
+    {
+        digitalWrite(SinglePins[i], LOW);
+    }
+}
+
+void setupConfig()
+{
+    Serial.println("setupConfig() start.");
     Serial.println("begin loaded config...");
     for (size_t i = 0; i < sizeof(Config); i++)
         ((char *)&config)[i] = EEPROM.read(i);
@@ -166,15 +211,21 @@ void setup()
     {
         Serial.println("config loaded.");
     }
+    Serial.println("setupConfig() end.");
+}
 
-    Serial.println("Begin searial print output.");
-
+void setupJoystick()
+{
+    Serial.println("setupJoystick() start.");
     Joystick.begin(false);
     Joystick.setXAxisRange(-GEAR / 2, GEAR / 2 - 1);
     Joystick.setYAxisRange(-GEAR / 2, GEAR / 2 - 1);
+    Serial.println("setupJoystick() end.");
+}
 
-    Serial.println("Setup IO for pins and encoder");
-
+void setupPins()
+{
+    Serial.println("setupPins() start.");
     // setup I/O for pins
     for (int i = 0; i < ButtonCount; i++)
     {
@@ -188,7 +239,13 @@ void setup()
     {
         pinMode(EncPins[i], INPUT_PULLUP);
     }
+    Serial.println("Setup IO for pins and encoder");
+    Serial.println("setupPins() end.");
+}
 
+void setupScratch()
+{
+    Serial.println("setupScratch() start.");
     //setup interrupts
     attachInterrupt(digitalPinToInterrupt(EncPins[0]), doEncoder0, CHANGE);
 
@@ -212,79 +269,53 @@ void setup()
             Serial.println("scratchLoop = scratchDigitalLoop");
         }
     }
+    Serial.println("setupScratch() end.");
+}
 
-    while (digitalRead(ButtonPins[0]) == LOW | digitalRead(ButtonPins[1]) == LOW)
-    {
-        if ((millis() % 1000) < 500)
-        {
-            for (int i = 0; i < SingleCount; i++)
-            {
-                digitalWrite(SinglePins[i], HIGH);
-            }
-        }
-        else if ((millis() % 1000) > 500)
-        {
-            Serial.println("wait for key release.....");
-            for (int i = 0; i < SingleCount; i++)
-            {
-                digitalWrite(SinglePins[i], LOW);
-            }
-        }
-    }
+void setup()
+{
+    Serial.begin(9600);
+    Serial.println("Begin searial print output.");
+
+    setupConfig();
+    setupJoystick();
+    setupPins();
+    setupScratch();
+
+    waitDone();
 
     for (int i = 0; i < SingleCount; i++)
-    {
         digitalWrite(SinglePins[i], LOW);
-    }
+    Serial.println("reset all pins status.");
 
-    //boot light
-    for (int i = 0; i < ButtonCount; i++)
-    {
-        digitalWrite(SinglePins[i], HIGH);
-        delay(80);
-        digitalWrite(SinglePins[i], LOW);
-    }
-    for (int i = ButtonCount - 2; i >= 0; i--)
-    {
-        digitalWrite(SinglePins[i], HIGH);
-        delay(80);
-        digitalWrite(SinglePins[i], LOW);
-    }
-    for (int i = 0; i < ButtonCount; i++)
-    {
-        digitalWrite(SinglePins[i], HIGH);
-    }
-    delay(500);
-    for (int i = 0; i < ButtonCount; i++)
-    {
-        digitalWrite(SinglePins[i], LOW);
-    }
+    bootLight();
 
     Serial.println("Setup end.");
 } //end setup
+
+void buttonLoop()
+{
+    if (!hidMode)
+        return;
+
+    for (int i = 0; i < ButtonCount; i++)
+    {
+        digitalWrite(SinglePins[i], !(digitalRead(ButtonPins[i])));
+    }
+}
 
 void loop()
 {
     ReportRate = micros();
 
-    //read buttons
     buttonsLoop();
-
-    if (hidMode == true)
-    {
-        for (int i = 0; i < ButtonCount; i++)
-        {
-            digitalWrite(SinglePins[i], !(digitalRead(ButtonPins[i])));
-        }
-    }
-
     scratchLoop();
 
     Joystick.sendState();
     delayMicroseconds(ReportDelay);
-} //end loop
+}
 
-//Interrupts
+//Interrupts encoder status changing...
 void doEncoder0()
 {
 
