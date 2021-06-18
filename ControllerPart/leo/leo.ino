@@ -134,6 +134,31 @@ void appendMessageChar(int ch)
 #pragma endregion
 
 #pragma region Scratch Process
+//Interrupts encoder status changing...
+void doEncoder0()
+{
+    int encpin0 = analogRead(EncPins[0]);
+    Serial.println(encpin0);
+
+    if (state[0] == false && digitalRead(EncPins[0]) == LOW)
+    {
+        set[0] = digitalRead(EncPins[1]);
+        state[0] = true;
+    }
+    if (state[0] == true && digitalRead(EncPins[0]) == HIGH)
+    {
+        set[1] = !digitalRead(EncPins[1]);
+        if (set[0] == true && set[1] == true)
+        {
+            encTT++;
+        }
+        if (set[0] == false && set[1] == false)
+        {
+            encTT--;
+        }
+        state[0] = false;
+    }
+}
 void (*scratchLoop)();
 void scratchEmptyLoop() {}
 void scratchAnalogLoop()
@@ -349,29 +374,6 @@ void setupScratch()
     Serial.println("setupScratch() end.");
 }
 
-void setup()
-{
-    Serial.begin(9600);
-    Serial.println("Begin searial print output.");
-
-    setupConfig();
-    setupJoystick();
-    setupButtons();
-    setupPins();
-    setupScratch();
-    resetMessageInputStatus();
-
-    waitDone();
-
-    for (int i = 0; i < SingleCount; i++)
-        digitalWrite(SinglePins[i], LOW);
-    Serial.println("reset all pins status.");
-
-    bootLight();
-
-    Serial.println("Setup end.");
-} //end setup
-
 void ledLoop()
 {
     if (!hidMode)
@@ -440,6 +442,29 @@ void messageLoop()
     }
 }
 
+void setup()
+{
+    Serial.begin(9600);
+    Serial.println("Begin searial print output.");
+
+    setupConfig();
+    setupJoystick();
+    setupButtons();
+    setupPins();
+    setupScratch();
+    resetMessageInputStatus();
+
+    waitDone();
+
+    for (int i = 0; i < SingleCount; i++)
+        digitalWrite(SinglePins[i], LOW);
+    Serial.println("reset all pins status.");
+
+    bootLight();
+
+    Serial.println("Setup end.");
+} //end setup
+
 void loop()
 {
     ReportRate = micros();
@@ -451,30 +476,4 @@ void loop()
 
     Joystick.sendState();
     delayMicroseconds(ReportDelay);
-}
-
-//Interrupts encoder status changing...
-void doEncoder0()
-{
-    int encpin0 = analogRead(EncPins[0]);
-    Serial.println(encpin0);
-
-    if (state[0] == false && digitalRead(EncPins[0]) == LOW)
-    {
-        set[0] = digitalRead(EncPins[1]);
-        state[0] = true;
-    }
-    if (state[0] == true && digitalRead(EncPins[0]) == HIGH)
-    {
-        set[1] = !digitalRead(EncPins[1]);
-        if (set[0] == true && set[1] == true)
-        {
-            encTT++;
-        }
-        if (set[0] == false && set[1] == false)
-        {
-            encTT--;
-        }
-        state[0] = false;
-    }
 }
