@@ -74,6 +74,8 @@ const int EncPinCount = sizeof(EncPins) / sizeof(EncPins[0]);
 //for example : isPress(BUTTON_1)
 #define isPress(key) !(digitalRead(ButtonPins[key]))
 
+#pragma region Config
+
 typedef struct
 {
     int ButtonMode = BUTTON_MODE_JOYSTICK;
@@ -83,6 +85,53 @@ typedef struct
 } Config;
 
 Config config;
+#pragma endregion
+
+#pragma region Message Process
+
+#define MESSAGE_BUFFER_SIZE 512
+char messageInputBuffer[MESSAGE_BUFFER_SIZE + 1];
+DynamicJsonDocument doc(MESSAGE_BUFFER_SIZE);
+int messageInputBufferPos = 0;
+int prevCh = 0;
+int stack = 0;
+boolean quoteMarking = false;
+boolean messageBroken = false;
+
+void resetMessageInputStatus()
+{
+    messageInputBufferPos = 0;
+    messageBroken = false;
+    quoteMarking = false;
+    stack = 0;
+    prevCh = -1;
+}
+
+void processMessageInput()
+{
+    const char *jsonStr = messageInputBuffer;
+    Serial.println(jsonStr);
+    deserializeJson(doc, jsonStr);
+    JsonObject obj = doc.as<JsonObject>();
+    Serial.print("recv json : ");
+    const char *name = doc["name"];
+    Serial.println(name);
+    doc.clear();
+}
+
+void appendMessageChar(int ch)
+{
+    if (messageInputBufferPos >= MESSAGE_BUFFER_SIZE)
+    {
+        messageBroken = true;
+    }
+    else
+    {
+        messageInputBuffer[messageInputBufferPos++] = ch;
+    }
+}
+
+#pragma endregion
 
 #pragma region Scratch Process
 void (*scratchLoop)();
@@ -310,6 +359,7 @@ void setup()
     setupButtons();
     setupPins();
     setupScratch();
+    resetMessageInputStatus();
 
     waitDone();
 
@@ -333,22 +383,6 @@ void ledLoop()
     }
 }
 
-#define MESSAGE_BUFFER_SIZE 512
-char messageInputBuffer[MESSAGE_BUFFER_SIZE + 1];
-int messageInputBufferPos = 0;
-int prevCh = 0;
-int stack = 0;
-boolean messageBroken = false;
-#define append(ch)                                        \
-    if (messageInputBufferPos == MESSAGE_BUFFER_SIZE)     \
-    {                                                     \
-        messageBroken = true;                             \
-    }                                                     \
-    else                                                  \
-    {                                                     \
-        messageInputBuffer[messageInputBufferPos++] = ch; \
-    }
-
 void messageLoop()
 {
     while (Serial.available())
@@ -356,36 +390,50 @@ void messageLoop()
         int ch = Serial.read();
         switch (ch)
         {
+        case '"':
+            appendMessageChar(ch);
+            if (prevCh == '\\')
+                break;
+            quoteMarking = !quoteMarking;
+            break;
         case '{':
             if (prevCh == '\\')
                 break;
-            append(ch);
-            stack++;
+            appendMessageChar(ch);
+            if (!quoteMarking)
+                stack++;
             break;
         case '}':
             if (prevCh == '\\')
                 break;
-            append(ch);
-            stack = max(0, stack - 1);
-            if (stack == 0 && messageInputBufferPos > 0)
+            appendMessageChar(ch);
+            if (!quoteMarking)
             {
-                messageInputBuffer[messageInputBufferPos] = 0;
-                char *jsonStr = messageInputBuffer;
-                Serial.print("recv json : ");
-                Serial.println(jsonStr);
-                messageInputBufferPos = 0;
+                stack = max(0, stack - 1);
+                if (stack == 0 && messageInputBufferPos > 0)
+                {
+                    //build string.
+                    messageInputBuffer[messageInputBufferPos] = 0;
+
+                    if (!messageBroken)
+                    {
+                        //the message content is good to parsing.
+                        processMessageInput();
+                    }
+
+                    //reset status
+                    resetMessageInputStatus();
+                }
             }
             break;
         default:
             if (stack > 0)
-                append(ch);
+                appendMessageChar(ch);
             break;
         }
         prevCh = ch;
     }
 }
-
-#undef append
 
 void loop()
 {
