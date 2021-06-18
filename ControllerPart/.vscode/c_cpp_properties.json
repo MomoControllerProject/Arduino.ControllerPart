@@ -17,7 +17,7 @@
             "includePath": [
                 "C:\\Program Files (x86)\\Arduino\\hardware\\arduino\\avr\\cores\\arduino",
                 "C:\\Program Files (x86)\\Arduino\\hardware\\arduino\\avr\\variants\\leonardo",
-                "C:\\Users\\MikiraSoraWork\\Documents\\Arduino\\libraries\\ArduinoJoystickLibrary-master\\src",
+                "C:\\Users\\mikir\\Documents\\Arduino\\libraries\\ArduinoJoystickLibrary-master\\src",
                 "C:\\Program Files (x86)\\Arduino\\hardware\\arduino\\avr\\libraries\\EEPROM\\src",
                 "C:\\Program Files (x86)\\Arduino\\libraries\\Keyboard\\src",
                 "C:\\Program Files (x86)\\Arduino\\hardware\\arduino\\avr\\libraries\\HID\\src",

@@ -123,14 +123,19 @@ void scratchDigitalLoop()
 
 #pragma region Buttons Process
 void (*buttonsLoop)();
+void buttonsEmptyLoop(){}
 void buttonsJoystickLoop()
 {
     for (int i = 0; i < ButtonCount; i++)
     {
         uint8_t d = isPress(i);
         Joystick.setButton(i, d);
+        if(d){
+            Serial.print("button ");
+            Serial.print(i);
+            Serial.println(" is pressed.");
+        }
     }
-    Serial.println(isPress(BUTTON_Start));
 }
 void buttonsKeyboardLoop()
 {
@@ -168,6 +173,8 @@ void waitDone()
             }
         }
     }
+
+    Serial.println("waitDone() fin.");
 }
 
 void bootLight()
@@ -212,6 +219,17 @@ void setupConfig()
         Serial.println("config loaded.");
     }
     Serial.println("setupConfig() end.");
+}
+
+void setupButtons(){
+    if(config.ButtonMode == BUTTON_MODE_JOYSTICK){
+        buttonsLoop = buttonsJoystickLoop;
+    }else if (config.ButtonMode == BUTTON_MODE_KEYBOARD)
+    {
+        buttonsLoop = buttonsKeyboardLoop;
+    }else{
+        buttonsLoop = buttonsEmptyLoop;
+    }
 }
 
 void setupJoystick()
@@ -279,6 +297,7 @@ void setup()
 
     setupConfig();
     setupJoystick();
+    setupButtons();
     setupPins();
     setupScratch();
 
