@@ -25,8 +25,12 @@
  *   release = true  =  analog turntable mode
  */
 #include <Joystick.h>
+#include "stdlib.h"
 #include <EEPROM.h>
+#include <ArduinoJson.h>
+#include "math.h"
 #include <Keyboard.h>
+using namespace std;
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID, JOYSTICK_TYPE_GAMEPAD, 14, 0,
                    true, true, false, false, false, false, false, false, false, false, false);
 
@@ -123,14 +127,15 @@ void scratchDigitalLoop()
 
 #pragma region Buttons Process
 void (*buttonsLoop)();
-void buttonsEmptyLoop(){}
+void buttonsEmptyLoop() {}
 void buttonsJoystickLoop()
 {
     for (int i = 0; i < ButtonCount; i++)
     {
         uint8_t d = isPress(i);
         Joystick.setButton(i, d);
-        if(d){
+        if (d)
+        {
             Serial.print("button ");
             Serial.print(i);
             Serial.println(" is pressed.");
@@ -221,13 +226,18 @@ void setupConfig()
     Serial.println("setupConfig() end.");
 }
 
-void setupButtons(){
-    if(config.ButtonMode == BUTTON_MODE_JOYSTICK){
+void setupButtons()
+{
+    if (config.ButtonMode == BUTTON_MODE_JOYSTICK)
+    {
         buttonsLoop = buttonsJoystickLoop;
-    }else if (config.ButtonMode == BUTTON_MODE_KEYBOARD)
+    }
+    else if (config.ButtonMode == BUTTON_MODE_KEYBOARD)
     {
         buttonsLoop = buttonsKeyboardLoop;
-    }else{
+    }
+    else
+    {
         buttonsLoop = buttonsEmptyLoop;
     }
 }
@@ -312,23 +322,79 @@ void setup()
     Serial.println("Setup end.");
 } //end setup
 
-void buttonLoop()
+void ledLoop()
 {
     if (!hidMode)
         return;
 
     for (int i = 0; i < ButtonCount; i++)
     {
-        digitalWrite(SinglePins[i], !(digitalRead(ButtonPins[i])));
+        digitalWrite(SinglePins[i], isPress(i));
     }
 }
+
+#define MESSAGE_BUFFER_SIZE 512
+char messageInputBuffer[MESSAGE_BUFFER_SIZE + 1];
+int messageInputBufferPos = 0;
+int prevCh = 0;
+int stack = 0;
+boolean messageBroken = false;
+#define append(ch)                                        \
+    if (messageInputBufferPos == MESSAGE_BUFFER_SIZE)     \
+    {                                                     \
+        messageBroken = true;                             \
+    }                                                     \
+    else                                                  \
+    {                                                     \
+        messageInputBuffer[messageInputBufferPos++] = ch; \
+    }
+
+void messageLoop()
+{
+    while (Serial.available())
+    {
+        int ch = Serial.read();
+        switch (ch)
+        {
+        case '{':
+            if (prevCh == '\\')
+                break;
+            append(ch);
+            stack++;
+            break;
+        case '}':
+            if (prevCh == '\\')
+                break;
+            append(ch);
+            stack = max(0, stack - 1);
+            if (stack == 0 && messageInputBufferPos > 0)
+            {
+                messageInputBuffer[messageInputBufferPos] = 0;
+                char *jsonStr = messageInputBuffer;
+                Serial.print("recv json : ");
+                Serial.println(jsonStr);
+                messageInputBufferPos = 0;
+            }
+            break;
+        default:
+            if (stack > 0)
+                append(ch);
+            break;
+        }
+        prevCh = ch;
+    }
+}
+
+#undef append
 
 void loop()
 {
     ReportRate = micros();
 
+    messageLoop();
     buttonsLoop();
     scratchLoop();
+    ledLoop();
 
     Joystick.sendState();
     delayMicroseconds(ReportDelay);
@@ -337,7 +403,6 @@ void loop()
 //Interrupts encoder status changing...
 void doEncoder0()
 {
-
     int encpin0 = analogRead(EncPins[0]);
     Serial.println(encpin0);
 
