@@ -420,6 +420,11 @@ void messageLoop()
                         //the message content is good to parsing.
                         processMessageInput();
                     }
+                    else
+                    {
+                        Serial.print("ERROR MESSAGE CONTENT PART:");
+                        Serial.println(messageInputBuffer);
+                    }
 
                     //reset status
                     resetMessageInputStatus();
