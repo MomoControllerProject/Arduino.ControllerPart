@@ -25,12 +25,13 @@
  *   release = true  =  analog turntable mode
  */
 #include <Joystick.h>
+#include "serialPrintf.h"
 #include "stdlib.h"
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include "math.h"
 #include <Keyboard.h>
-using namespace std;
+
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID, JOYSTICK_TYPE_GAMEPAD, 14, 0,
                    true, true, false, false, false, false, false, false, false, false, false);
 
@@ -38,7 +39,8 @@ boolean hidMode = true, state[1] = {false}, set[2] = {false};
 int encTT = 0, TTold = 0;
 unsigned long ReportRate;
 unsigned long TTmillis;
-void doEncoder0();
+
+void dispatchJsonMessage(const DynamicJsonDocument &);
 
 #define ReportDelay 1000
 #define GEAR 60     //number of gear teeth or ppr of encoder
@@ -59,17 +61,17 @@ const int EncPinCount = sizeof(EncPins) / sizeof(EncPins[0]);
 #define SCRATCH_MODE_ANALOG 1
 #define SCRATCH_MODE_DIGIT 2
 
-#define BUTTON_1 1
-#define BUTTON_2 2
-#define BUTTON_3 3
-#define BUTTON_4 4
-#define BUTTON_5 5
-#define BUTTON_6 6
-#define BUTTON_7 7
-#define BUTTON_Select 8
-#define BUTTON_Start 9
-#define BUTTON_VEFX 10
-#define BUTTON_EFFECT 11
+#define BUTTON_1 2
+#define BUTTON_2 3
+#define BUTTON_3 4
+#define BUTTON_4 5
+#define BUTTON_5 6
+#define BUTTON_6 7
+#define BUTTON_7 8
+#define BUTTON_Select 1
+#define BUTTON_Start 0
+#define BUTTON_VEFX 9
+#define BUTTON_EFFECT 10
 
 //for example : isPress(BUTTON_1)
 #define isPress(key) !(digitalRead(ButtonPins[key]))
@@ -80,18 +82,44 @@ typedef struct
 {
     int ButtonMode = BUTTON_MODE_JOYSTICK;
     int ScratchMode = SCRATCH_MODE_ANALOG;
-    int ButtonsKeycode[ButtonCount] = {'a', 'b', 'c', 'd', 'e', 'f', 'g'};
+    int ButtonsKeycode[ButtonCount] = {'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i'};
+    int ScratchKeycode[2] = {'j', 'k'};
     int VerifyCode = 2857;
 } Config;
 
 Config config;
+
+void loadConfig()
+{
+    Serial.println("begin load config...");
+    for (size_t i = 0; i < sizeof(Config); i++)
+        ((char *)&config)[i] = EEPROM.read(i);
+    if (config.VerifyCode != 2857)
+    {
+        Config c;
+        config = c;
+        Serial.println("config load failed, reset.");
+    }
+    else
+    {
+        Serial.println("config loaded.");
+    }
+}
+
+void saveConfig()
+{
+    Serial.println("begin save config...");
+    for (size_t i = 0; i < sizeof(Config); i++)
+        EEPROM.write(i, ((char *)&config)[i]);
+    Serial.println("config saved.");
+}
+
 #pragma endregion
 
 #pragma region Message Process
 
-#define MESSAGE_BUFFER_SIZE 512
+#define MESSAGE_BUFFER_SIZE 128
 char messageInputBuffer[MESSAGE_BUFFER_SIZE + 1];
-DynamicJsonDocument doc(MESSAGE_BUFFER_SIZE);
 int messageInputBufferPos = 0;
 int prevCh = 0;
 int stack = 0;
@@ -110,13 +138,20 @@ void resetMessageInputStatus()
 void processMessageInput()
 {
     const char *jsonStr = messageInputBuffer;
-    Serial.println(jsonStr);
-    deserializeJson(doc, jsonStr);
-    JsonObject obj = doc.as<JsonObject>();
-    Serial.print("recv json : ");
-    const char *name = doc["name"];
-    Serial.println(name);
-    doc.clear();
+    DynamicJsonDocument doc(MESSAGE_BUFFER_SIZE);
+    DeserializationError error = deserializeJson(doc, jsonStr);
+    if (error.code() == DeserializationError::Code::Ok)
+    {
+        Serial.print("recv json : ");
+        Serial.println(jsonStr);
+
+        dispatchJsonMessage(doc);
+    }
+    else
+    {
+        Serial.print("parse message content into json failed :");
+        Serial.println(jsonStr);
+    }
 }
 
 void appendMessageChar(int ch)
@@ -171,31 +206,40 @@ void scratchAnalogLoop()
 }
 void scratchDigitalLoop()
 {
+#define setButton(joystickId, isPress)                          \
+    if (config.ButtonMode == BUTTON_MODE_JOYSTICK)              \
+        Joystick.setButton(joystickId, isPress);                \
+    else if (isPress)                                           \
+        Keyboard.press(config.ScratchKeycode[joystickId - 11]); \
+    else                                                        \
+        Keyboard.release(config.ScratchKeycode[joystickId - 11]);
+
     if (encTT != TTold)
     {
         if (encTT < -TTdz)
         {
-            Joystick.setButton(11, 1);
-            Joystick.setButton(12, 0);
+            setButton(11, 1);
+            setButton(12, 0);
             TTmillis = millis();
             encTT = 0;
         }
         else if (encTT > TTdz)
         {
-            Joystick.setButton(11, 0);
-            Joystick.setButton(12, 1);
+            setButton(11, 0);
+            setButton(12, 1);
             TTmillis = millis();
             encTT = 0;
         }
     }
     if ((millis() - TTmillis) > TTdelay)
     {
-        Joystick.setButton(11, 0);
-        Joystick.setButton(12, 0);
+        setButton(11, 0);
+        setButton(12, 0);
         TTmillis = millis();
         encTT = 0;
     }
     TTold = encTT;
+#undef setButton
 }
 #pragma endregion
 
@@ -234,6 +278,7 @@ void buttonsKeyboardLoop()
 
 void waitDone()
 {
+    Serial.println("wait for key release.....");
     while (digitalRead(ButtonPins[0]) == LOW | digitalRead(ButtonPins[1]) == LOW)
     {
         if ((millis() % 1000) < 500)
@@ -245,7 +290,6 @@ void waitDone()
         }
         else if ((millis() % 1000) > 500)
         {
-            Serial.println("wait for key release.....");
             for (int i = 0; i < SingleCount; i++)
             {
                 digitalWrite(SinglePins[i], LOW);
@@ -284,19 +328,7 @@ void bootLight()
 void setupConfig()
 {
     Serial.println("setupConfig() start.");
-    Serial.println("begin loaded config...");
-    for (size_t i = 0; i < sizeof(Config); i++)
-        ((char *)&config)[i] = EEPROM.read(i);
-    if (config.VerifyCode != 2857)
-    {
-        Config c;
-        config = c;
-        Serial.println("config loaded failed, reset.");
-    }
-    else
-    {
-        Serial.println("config loaded.");
-    }
+    loadConfig();
     Serial.println("setupConfig() end.");
 }
 
@@ -305,14 +337,17 @@ void setupButtons()
     if (config.ButtonMode == BUTTON_MODE_JOYSTICK)
     {
         buttonsLoop = buttonsJoystickLoop;
+        Serial.println("setupButtons() buttonsLoop = buttonsJoystickLoop.");
     }
     else if (config.ButtonMode == BUTTON_MODE_KEYBOARD)
     {
         buttonsLoop = buttonsKeyboardLoop;
+        Serial.println("setupButtons() buttonsLoop = buttonsKeyboardLoop.");
     }
     else
     {
         buttonsLoop = buttonsEmptyLoop;
+        Serial.println("setupButtons() buttonsLoop = buttonsEmptyLoop.");
     }
 }
 
@@ -445,6 +480,8 @@ void messageLoop()
 void setup()
 {
     Serial.begin(9600);
+    if (isPress(BUTTON_Start))
+        delay(1250); //delay for serial printing.
     Serial.println("Begin searial print output.");
 
     setupConfig();
@@ -476,4 +513,100 @@ void loop()
 
     Joystick.sendState();
     delayMicroseconds(ReportDelay);
+}
+
+void onChangeButtonKeycode(const DynamicJsonDocument &json)
+{
+    int button = json["button"];
+    int keycode = json["keycode"];
+    int beforeKeycode = config.ButtonsKeycode[button];
+    config.ButtonsKeycode[button] = keycode;
+    saveConfig();
+
+    Serial.print("onChangeKeyCode() change button ");
+    Serial.print(button);
+    Serial.print(" from keycode ");
+    Serial.print(beforeKeycode);
+    Serial.print(" to ");
+    Serial.println(keycode);
+}
+
+void onChangeScratchKeycode(const DynamicJsonDocument &json)
+{
+    int button = json["button"];
+    int keycode = json["keycode"];
+    int beforeKeycode = config.ScratchKeycode[button];
+
+    config.ScratchKeycode[button] = keycode;
+    saveConfig();
+
+    serialPrintf("onChangeScratchKeycode() changed scratch %d keycode from %d to %d\n", button, beforeKeycode, keycode);
+}
+
+void onEchoPrint(const DynamicJsonDocument &json)
+{
+    const char *content = json["content"];
+    serialPrintf("onEchoPrint() %s\n", content);
+}
+
+void onConfig(const DynamicJsonDocument &json)
+{
+    const char *action = json["action"];
+    if (!strcmp(action, "save"))
+    {
+        saveConfig();
+    }
+    else if (!strcmp(action, "load"))
+    {
+        loadConfig();
+    }
+    else if (!strcmp(action, "reset"))
+    {
+        config = Config();
+        saveConfig();
+    }
+    else if (!strcmp(action, "print"))
+    {
+        StaticJsonDocument<256> va;
+        JsonArray array = va.createNestedArray("ButtonsKeycode");
+        for (size_t i = 0; i < ButtonCount; i++)
+            array.add(config.ButtonsKeycode[i]);
+        array = va.createNestedArray("ScratchKeycode");
+        for (size_t i = 0; i < 2; i++)
+            array.add(config.ScratchKeycode[i]);
+        va["ButtonMode"] = config.ButtonMode;
+        va["ScratchMode"] = config.ScratchMode;
+
+        serializeJson(va, Serial);
+        Serial.println();
+    }
+    else
+    {
+        serialPrintf("onConfig() unknoen action %s.\n", action);
+        return;
+    }
+
+    serialPrintf("onConfig() action %s done.\n", action);
+}
+
+void dispatchJsonMessage(const DynamicJsonDocument &json)
+{
+    const char *name = json["name"];
+
+#define RegisterEvent(eventName, eventCallback)      \
+    if (!strcmp(eventName, name))                    \
+    {                                                \
+        eventCallback(json);                         \
+        serialPrintf("event %s processed.\n", name); \
+        return;                                      \
+    }
+
+    RegisterEvent("ChangeKeyCode", onChangeButtonKeycode);
+    RegisterEvent("ChangeScratchCode", onChangeScratchKeycode);
+    RegisterEvent("Config", onConfig);
+    RegisterEvent("EchoPrint", onEchoPrint);
+
+    serialPrintf("event not processed : %s\n", name);
+
+#undef RegisterEvent
 }
