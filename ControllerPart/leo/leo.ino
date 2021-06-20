@@ -27,10 +27,10 @@
 #include <Joystick.h>
 #include "serialPrintf.h"
 #include "stdlib.h"
+#include "HID-Project.h"
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include "math.h"
-#include <Keyboard.h>
 
 Joystick_ Joystick(JOYSTICK_DEFAULT_REPORT_ID, JOYSTICK_TYPE_GAMEPAD, 14, 0,
                    true, true, false, false, false, false, false, false, false, false, false);
@@ -108,10 +108,10 @@ void loadConfig()
 
 void saveConfig()
 {
-    Serial.println("begin save config...");
+    Serial.println(F("begin save config..."));
     for (size_t i = 0; i < sizeof(Config); i++)
         EEPROM.write(i, ((char *)&config)[i]);
-    Serial.println("config saved.");
+    Serial.println(F("config saved."));
 }
 
 #pragma endregion
@@ -142,14 +142,14 @@ void processMessageInput()
     DeserializationError error = deserializeJson(doc, jsonStr);
     if (error.code() == DeserializationError::Code::Ok)
     {
-        Serial.print("recv json : ");
+        Serial.print(F("recv json : "));
         Serial.println(jsonStr);
 
         dispatchJsonMessage(doc);
     }
     else
     {
-        Serial.print("parse message content into json failed :");
+        Serial.print(F("parse message content into json failed :"));
         Serial.println(jsonStr);
     }
 }
@@ -173,7 +173,7 @@ void appendMessageChar(int ch)
 void doEncoder0()
 {
     int encpin0 = analogRead(EncPins[0]);
-    Serial.println(encpin0);
+    //Serial.println(encpin0);
 
     if (state[0] == false && digitalRead(EncPins[0]) == LOW)
     {
@@ -210,9 +210,9 @@ void scratchDigitalLoop()
     if (config.ButtonMode == BUTTON_MODE_JOYSTICK)              \
         Joystick.setButton(joystickId, isPress);                \
     else if (isPress)                                           \
-        Keyboard.press(config.ScratchKeycode[joystickId - 11]); \
+        NKROKeyboard.add(config.ScratchKeycode[joystickId - 11]); \
     else                                                        \
-        Keyboard.release(config.ScratchKeycode[joystickId - 11]);
+        NKROKeyboard.remove(config.ScratchKeycode[joystickId - 11]);
 
     if (encTT != TTold)
     {
@@ -254,9 +254,9 @@ void buttonsJoystickLoop()
         Joystick.setButton(i, d);
         if (d)
         {
-            Serial.print("button ");
+            Serial.print(F("button "));
             Serial.print(i);
-            Serial.println(" is pressed.");
+            Serial.println(F(" is pressed."));
         }
     }
 }
@@ -266,19 +266,21 @@ void buttonsKeyboardLoop()
     {
         if (isPress(i))
         {
-            Keyboard.press(config.ButtonsKeycode[i]);
+            NKROKeyboard.add(config.ButtonsKeycode[i]);
         }
         else
         {
-            Keyboard.release(config.ButtonsKeycode[i]);
+            NKROKeyboard.remove(config.ButtonsKeycode[i]);
         }
     }
+
+    NKROKeyboard.send();
 }
 #pragma endregion
 
 void waitDone()
 {
-    Serial.println("wait for key release.....");
+    Serial.println(F("wait for key release....."));
     while (digitalRead(ButtonPins[0]) == LOW | digitalRead(ButtonPins[1]) == LOW)
     {
         if ((millis() % 1000) < 500)
@@ -297,7 +299,7 @@ void waitDone()
         }
     }
 
-    Serial.println("waitDone() fin.");
+    Serial.println(F("waitDone() fin."));
 }
 
 void bootLight()
@@ -327,9 +329,9 @@ void bootLight()
 
 void setupConfig()
 {
-    Serial.println("setupConfig() start.");
+    Serial.println(F("setupConfig() start."));
     loadConfig();
-    Serial.println("setupConfig() end.");
+    Serial.println(F("setupConfig() end."));
 }
 
 void setupButtons()
@@ -337,32 +339,33 @@ void setupButtons()
     if (config.ButtonMode == BUTTON_MODE_JOYSTICK)
     {
         buttonsLoop = buttonsJoystickLoop;
-        Serial.println("setupButtons() buttonsLoop = buttonsJoystickLoop.");
+        Serial.println(F("setupButtons() buttonsLoop = buttonsJoystickLoop."));
     }
     else if (config.ButtonMode == BUTTON_MODE_KEYBOARD)
     {
+        NKROKeyboard.begin();
         buttonsLoop = buttonsKeyboardLoop;
-        Serial.println("setupButtons() buttonsLoop = buttonsKeyboardLoop.");
+        Serial.println(F("setupButtons() buttonsLoop = buttonsKeyboardLoop."));
     }
     else
     {
         buttonsLoop = buttonsEmptyLoop;
-        Serial.println("setupButtons() buttonsLoop = buttonsEmptyLoop.");
+        Serial.println(F("setupButtons() buttonsLoop = buttonsEmptyLoop."));
     }
 }
 
 void setupJoystick()
 {
-    Serial.println("setupJoystick() start.");
+    Serial.println(F("setupJoystick() start."));
     Joystick.begin(false);
     Joystick.setXAxisRange(-GEAR / 2, GEAR / 2 - 1);
     Joystick.setYAxisRange(-GEAR / 2, GEAR / 2 - 1);
-    Serial.println("setupJoystick() end.");
+    Serial.println(F("setupJoystick() end."));
 }
 
 void setupPins()
 {
-    Serial.println("setupPins() start.");
+    Serial.println(F("setupPins() start."));
     // setup I/O for pins
     for (int i = 0; i < ButtonCount; i++)
     {
@@ -376,13 +379,13 @@ void setupPins()
     {
         pinMode(EncPins[i], INPUT_PULLUP);
     }
-    Serial.println("Setup IO for pins and encoder");
-    Serial.println("setupPins() end.");
+    Serial.println(F("Setup IO for pins and encoder"));
+    Serial.println(F("setupPins() end."));
 }
 
 void setupScratch()
 {
-    Serial.println("setupScratch() start.");
+    Serial.println(F("setupScratch() start."));
     //setup interrupts
     attachInterrupt(digitalPinToInterrupt(EncPins[0]), doEncoder0, CHANGE);
 
@@ -391,22 +394,22 @@ void setupScratch()
     {
         //both press and mean disable TT.
         scratchLoop = scratchEmptyLoop;
-        Serial.println("scratchLoop = scratchEmptyLoop");
+        Serial.println(F("scratchLoop = scratchEmptyLoop"));
     }
     else
     {
         if (digitalRead(ButtonPins[1]))
         {
             scratchLoop = scratchAnalogLoop;
-            Serial.println("scratchLoop = scratchAnalogLoop");
+            Serial.println(F("scratchLoop = scratchAnalogLoop"));
         }
         else
         {
             scratchLoop = scratchDigitalLoop;
-            Serial.println("scratchLoop = scratchDigitalLoop");
+            Serial.println(F("scratchLoop = scratchDigitalLoop"));
         }
     }
-    Serial.println("setupScratch() end.");
+    Serial.println(F("setupScratch() end."));
 }
 
 void ledLoop()
@@ -459,7 +462,7 @@ void messageLoop()
                     }
                     else
                     {
-                        Serial.print("ERROR MESSAGE CONTENT PART:");
+                        Serial.print(F("ERROR MESSAGE CONTENT PART:"));
                         Serial.println(messageInputBuffer);
                     }
 
@@ -480,9 +483,10 @@ void messageLoop()
 void setup()
 {
     Serial.begin(9600);
-    if (isPress(BUTTON_Start))
-        delay(1250); //delay for serial printing.
-    Serial.println("Begin searial print output.");
+    //if (isPress(BUTTON_Start))
+    while (!Serial)
+        ;
+    Serial.println(F("Begin searial print output."));
 
     setupConfig();
     setupJoystick();
@@ -495,11 +499,11 @@ void setup()
 
     for (int i = 0; i < SingleCount; i++)
         digitalWrite(SinglePins[i], LOW);
-    Serial.println("reset all pins status.");
+    Serial.println(F("reset all pins status."));
 
     bootLight();
 
-    Serial.println("Setup end.");
+    Serial.println(F("Setup end."));
 } //end setup
 
 void loop()
@@ -507,8 +511,8 @@ void loop()
     ReportRate = micros();
 
     messageLoop();
-    buttonsLoop();
     scratchLoop();
+    buttonsLoop();
     ledLoop();
 
     Joystick.sendState();
@@ -523,11 +527,11 @@ void onChangeButtonKeycode(const DynamicJsonDocument &json)
     config.ButtonsKeycode[button] = keycode;
     saveConfig();
 
-    Serial.print("onChangeKeyCode() change button ");
+    Serial.print(F("onChangeKeyCode() change button "));
     Serial.print(button);
-    Serial.print(" from keycode ");
+    Serial.print(F(" from keycode "));
     Serial.print(beforeKeycode);
-    Serial.print(" to ");
+    Serial.print(F(" to "));
     Serial.println(keycode);
 }
 
@@ -563,6 +567,22 @@ void onConfig(const DynamicJsonDocument &json)
     else if (!strcmp(action, "reset"))
     {
         config = Config();
+        saveConfig();
+    }
+    else if (!strcmp(action, "set"))
+    {
+        const char *key = json["key"];
+        const int value = json["value"];
+
+        if (!strcmp(key, "ButtonMode"))
+        {
+            config.ButtonMode = value;
+        }
+        else if (!strcmp(key, "ScratchMode"))
+        {
+            config.ScratchMode = value;
+        }
+
         saveConfig();
     }
     else if (!strcmp(action, "print"))
