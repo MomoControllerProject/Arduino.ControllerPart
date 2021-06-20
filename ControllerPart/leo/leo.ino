@@ -206,12 +206,12 @@ void scratchAnalogLoop()
 }
 void scratchDigitalLoop()
 {
-#define setButton(joystickId, isPress)                          \
-    if (config.ButtonMode == BUTTON_MODE_JOYSTICK)              \
-        Joystick.setButton(joystickId, isPress);                \
-    else if (isPress)                                           \
+#define setButton(joystickId, isPress)                            \
+    if (config.ButtonMode == BUTTON_MODE_JOYSTICK)                \
+        Joystick.setButton(joystickId, isPress);                  \
+    else if (isPress)                                             \
         NKROKeyboard.add(config.ScratchKeycode[joystickId - 11]); \
-    else                                                        \
+    else                                                          \
         NKROKeyboard.remove(config.ScratchKeycode[joystickId - 11]);
 
     if (encTT != TTold)
@@ -483,9 +483,10 @@ void messageLoop()
 void setup()
 {
     Serial.begin(9600);
-    //if (isPress(BUTTON_Start))
-    while (!Serial)
-        ;
+    //确保日志完整输出
+    if (isPress(BUTTON_Start))
+        while (!Serial);
+
     Serial.println(F("Begin searial print output."));
 
     setupConfig();
