@@ -252,12 +252,14 @@ void buttonsJoystickLoop()
     {
         uint8_t d = isPress(i);
         Joystick.setButton(i, d);
+        /*
         if (d)
         {
             Serial.print(F("button "));
             Serial.print(i);
             Serial.println(F(" is pressed."));
         }
+        */
     }
 }
 void buttonsKeyboardLoop()
